@@ -1,5 +1,4 @@
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -23,7 +22,10 @@
 #include <boost/noncopyable.hpp>
 #include <boost/shared_ptr.hpp>
 #include <stdint.h>
+
+#include "Config.hh"
 #include "Boost.hh"
+#include "Reader.hh"
 
 /// \file ResolverSchema.hh
 ///
@@ -31,11 +33,10 @@
 namespace avro {
     
 class ValidSchema;
-class Reader;
 class Layout;
 class Resolver;
 
-class ResolverSchema {
+class AVRO_DECL ResolverSchema {
 
   public:
 

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -19,6 +19,7 @@
 #ifndef avro_AvroTraits_hh__
 #define avro_AvroTraits_hh__
 
+#include "Config.hh"
 #include "Boost.hh"
 #include "Types.hh"
 

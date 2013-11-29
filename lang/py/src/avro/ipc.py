@@ -21,7 +21,6 @@ try:
   from cStringIO import StringIO
 except ImportError:
   from StringIO import StringIO
-import struct
 from avro import io
 from avro import protocol
 from avro import schema
@@ -30,34 +29,13 @@ from avro import schema
 # Constants
 #
 
-HANDSHAKE_REQUEST_SCHEMA = schema.parse("""\
-{
-  "type": "record",
-  "name": "HandshakeRequest", "namespace":"org.apache.avro.ipc",
-  "fields": [
-    {"name": "clientHash",
-     "type": {"type": "fixed", "name": "MD5", "size": 16}},
-    {"name": "clientProtocol", "type": ["null", "string"]},
-    {"name": "serverHash", "type": "MD5"},
-    {"name": "meta", "type": ["null", {"type": "map", "values": "bytes"}]}
-  ]
-}""")
+# Handshake schema is pulled in during build
+HANDSHAKE_REQUEST_SCHEMA = schema.parse("""
+@HANDSHAKE_REQUEST_SCHEMA@
+""")
 
-HANDSHAKE_RESPONSE_SCHEMA = schema.parse("""\
-{
-  "type": "record",
-  "name": "HandshakeResponse", "namespace": "org.apache.avro.ipc",
-  "fields": [
-    {"name": "match",
-     "type": {"type": "enum", "name": "HandshakeMatch",
-              "symbols": ["BOTH", "CLIENT", "NONE"]}},
-    {"name": "serverProtocol", "type": ["null", "string"]},
-    {"name": "serverHash",
-     "type": ["null", {"type": "fixed", "name": "MD5", "size": 16}]},
-    {"name": "meta",
-     "type": ["null", {"type": "map", "values": "bytes"}]}
-  ]
-}
+HANDSHAKE_RESPONSE_SCHEMA = schema.parse("""
+@HANDSHAKE_RESPONSE_SCHEMA@
 """)
 
 HANDSHAKE_REQUESTOR_WRITER = io.DatumWriter(HANDSHAKE_REQUEST_SCHEMA)
@@ -75,7 +53,7 @@ SYSTEM_ERROR_SCHEMA = schema.parse('["string"]')
 REMOTE_HASHES = {}
 REMOTE_PROTOCOLS = {}
 
-BIG_ENDIAN_INT_STRUCT = struct.Struct('!I')
+BIG_ENDIAN_INT_STRUCT = io.struct_class('!I')
 BUFFER_HEADER_LENGTH = 4
 BUFFER_SIZE = 8192
 
@@ -97,7 +75,7 @@ class ConnectionClosedException(schema.AvroException):
 # Base IPC Classes (Requestor/Responder)
 #
 
-class Requestor(object):
+class BaseRequestor(object):
   """Base class for the client side of a protocol interaction."""
   def __init__(self, local_protocol, transceiver):
     self._local_protocol = local_protocol
@@ -138,15 +116,7 @@ class Requestor(object):
 
     # send the handshake and call request; block until call response
     call_request = buffer_writer.getvalue()
-    call_response = self.transceiver.transceive(call_request)
-
-    # process the handshake and call response
-    buffer_decoder = io.BinaryDecoder(StringIO(call_response))
-    call_response_exists = self.read_handshake_response(buffer_decoder)
-    if call_response_exists:
-      return self.read_call_response(message_name, buffer_decoder)
-    else:
-      return self.request(message_name, request_datum)
+    return self.issue_request(call_request, message_name, request_datum)
 
   def write_handshake_request(self, encoder):
     local_hash = self.local_protocol.md5
@@ -253,6 +223,19 @@ class Requestor(object):
   def read_error(self, writers_schema, readers_schema, decoder):
     datum_reader = io.DatumReader(writers_schema, readers_schema)
     return AvroRemoteException(datum_reader.read(decoder))
+
+class Requestor(BaseRequestor):
+
+  def issue_request(self, call_request, message_name, request_datum):
+    call_response = self.transceiver.transceive(call_request)
+
+    # process the handshake and call response
+    buffer_decoder = io.BinaryDecoder(StringIO(call_response))
+    call_response_exists = self.read_handshake_response(buffer_decoder)
+    if call_response_exists:
+      return self.read_call_response(message_name, buffer_decoder)
+    else:
+      return self.request(message_name, request_datum)
 
 class Responder(object):
   """Base class for the server side of a protocol interaction."""
@@ -456,7 +439,8 @@ class HTTPTransceiver(object):
   A simple HTTP-based transceiver implementation.
   Useful for clients but not for servers
   """
-  def __init__(self, host, port):
+  def __init__(self, host, port, req_resource='/'):
+    self.req_resource = req_resource
     self.conn = httplib.HTTPConnection(host, port)
     self.conn.connect()
 
@@ -468,6 +452,7 @@ class HTTPTransceiver(object):
   def set_conn(self, new_conn):
     self._conn = new_conn
   conn = property(lambda self: self._conn, set_conn)
+  req_resource = '/'
 
   def transceive(self, request):
     self.write_framed_message(request)
@@ -483,14 +468,13 @@ class HTTPTransceiver(object):
 
   def write_framed_message(self, message):
     req_method = 'POST'
-    req_resource = '/'
     req_headers = {'Content-Type': 'avro/binary'}
 
     req_body_buffer = FramedWriter(StringIO())
     req_body_buffer.write_framed_message(message)
     req_body = req_body_buffer.writer.getvalue()
 
-    self.conn.request(req_method, req_resource, req_body, req_headers)
+    self.conn.request(req_method, self.req_resource, req_body, req_headers)
 
   def close(self):
     self.conn.close()

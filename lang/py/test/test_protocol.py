@@ -38,9 +38,7 @@ class ExampleProtocol(object):
 #
 # Example Protocols
 #
-
-EXAMPLES = [
-  ExampleProtocol("""\
+HELLO_WORLD = ExampleProtocol("""\
 {
   "namespace": "com.acme",
   "protocol": "HelloWorld",
@@ -60,7 +58,9 @@ EXAMPLES = [
     }
   }
 }
-    """, True),
+    """, True)
+EXAMPLES = [
+  HELLO_WORLD,
   ExampleProtocol("""\
 {"namespace": "org.apache.avro.test",
  "protocol": "Simple",
@@ -146,6 +146,142 @@ EXAMPLES = [
 
 }
     """, True),
+ExampleProtocol("""\
+{"namespace": "org.apache.avro.test.namespace",
+ "protocol": "TestImplicitNamespace",
+
+ "types": [
+     {"name": "org.apache.avro.test.util.MD5", "type": "fixed", "size": 16},
+     {"name": "ReferencedRecord", "type": "record", 
+       "fields": [ {"name": "foo", "type": "string"} ] },
+     {"name": "TestRecord", "type": "record",
+      "fields": [ {"name": "hash", "type": "org.apache.avro.test.util.MD5"},
+                  {"name": "unqalified", "type": "ReferencedRecord"} ]
+     },
+     {"name": "TestError",
+      "type": "error", "fields": [ {"name": "message", "type": "string"} ]
+     }
+ ],
+
+ "messages": {
+     "echo": {
+         "request": [{"name": "qualified", 
+             "type": "org.apache.avro.test.namespace.TestRecord"}],
+         "response": "TestRecord"
+     },
+
+     "error": {
+         "request": [],
+         "response": "null",
+         "errors": ["org.apache.avro.test.namespace.TestError"]
+     }
+
+ }
+
+}
+    """, True),
+ExampleProtocol("""\
+{"namespace": "org.apache.avro.test.namespace",
+ "protocol": "TestNamespaceTwo",
+
+ "types": [
+     {"name": "org.apache.avro.test.util.MD5", "type": "fixed", "size": 16},
+     {"name": "ReferencedRecord", "type": "record", 
+       "namespace": "org.apache.avro.other.namespace", 
+       "fields": [ {"name": "foo", "type": "string"} ] },
+     {"name": "TestRecord", "type": "record",
+      "fields": [ {"name": "hash", "type": "org.apache.avro.test.util.MD5"},
+                  {"name": "qualified", 
+                    "type": "org.apache.avro.other.namespace.ReferencedRecord"} 
+                ]
+     },
+     {"name": "TestError",
+      "type": "error", "fields": [ {"name": "message", "type": "string"} ]
+     }
+ ],
+
+ "messages": {
+     "echo": {
+         "request": [{"name": "qualified", 
+             "type": "org.apache.avro.test.namespace.TestRecord"}],
+         "response": "TestRecord"
+     },
+
+     "error": {
+         "request": [],
+         "response": "null",
+         "errors": ["org.apache.avro.test.namespace.TestError"]
+     }
+
+ }
+
+}
+    """, True),
+ExampleProtocol("""\
+{"namespace": "org.apache.avro.test.namespace",
+ "protocol": "TestValidRepeatedName",
+
+ "types": [
+     {"name": "org.apache.avro.test.util.MD5", "type": "fixed", "size": 16},
+     {"name": "ReferencedRecord", "type": "record", 
+       "namespace": "org.apache.avro.other.namespace", 
+       "fields": [ {"name": "foo", "type": "string"} ] },
+     {"name": "ReferencedRecord", "type": "record", 
+       "fields": [ {"name": "bar", "type": "double"} ] },
+     {"name": "TestError",
+      "type": "error", "fields": [ {"name": "message", "type": "string"} ]
+     }
+ ],
+
+ "messages": {
+     "echo": {
+         "request": [{"name": "qualified", 
+             "type": "ReferencedRecord"}],
+         "response": "org.apache.avro.other.namespace.ReferencedRecord"
+     },
+
+     "error": {
+         "request": [],
+         "response": "null",
+         "errors": ["org.apache.avro.test.namespace.TestError"]
+     }
+
+ }
+
+}
+    """, True),
+ExampleProtocol("""\
+{"namespace": "org.apache.avro.test.namespace",
+ "protocol": "TestInvalidRepeatedName",
+
+ "types": [
+     {"name": "org.apache.avro.test.util.MD5", "type": "fixed", "size": 16},
+     {"name": "ReferencedRecord", "type": "record", 
+       "fields": [ {"name": "foo", "type": "string"} ] },
+     {"name": "ReferencedRecord", "type": "record", 
+       "fields": [ {"name": "bar", "type": "double"} ] },
+     {"name": "TestError",
+      "type": "error", "fields": [ {"name": "message", "type": "string"} ]
+     }
+ ],
+
+ "messages": {
+     "echo": {
+         "request": [{"name": "qualified", 
+             "type": "ReferencedRecord"}],
+         "response": "org.apache.avro.other.namespace.ReferencedRecord"
+     },
+
+     "error": {
+         "request": [],
+         "response": "null",
+         "errors": ["org.apache.avro.test.namespace.TestError"]
+     }
+
+ }
+
+}
+    """, False),
   ExampleProtocol("""\
 {"namespace": "org.apache.avro.test",
  "protocol": "BulkData",
@@ -168,32 +304,82 @@ EXAMPLES = [
 
 }
     """, True),
+  ExampleProtocol("""\
+{
+  "protocol" : "API",
+  "namespace" : "xyz.api",
+  "types" : [ {
+    "type" : "enum",
+    "name" : "Symbology",
+    "namespace" : "xyz.api.product",
+    "symbols" : [ "OPRA", "CUSIP", "ISIN", "SEDOL" ]
+  }, {
+    "type" : "record",
+    "name" : "Symbol",
+    "namespace" : "xyz.api.product",
+    "fields" : [ {
+      "name" : "symbology",
+      "type" : "xyz.api.product.Symbology"
+    }, {
+      "name" : "symbol",
+      "type" : "string"
+    } ]
+  }, {
+    "type" : "record",
+    "name" : "MultiSymbol",
+    "namespace" : "xyz.api.product",
+    "fields" : [ {
+      "name" : "symbols",
+      "type" : {
+        "type" : "map",
+        "values" : "xyz.api.product.Symbol"
+      }
+    } ]
+  } ],
+  "messages" : {
+  }
+}
+    """, True),
 ]
 
 VALID_EXAMPLES = [e for e in EXAMPLES if e.valid]
 
 class TestProtocol(unittest.TestCase):
   def test_parse(self):
-    print ''
-    print 'TEST PARSE'
-    print '=========='
-    print ''
-
     num_correct = 0
     for example in EXAMPLES:
       try:
         protocol.parse(example.protocol_string)
-        if example.valid: num_correct += 1
-        debug_msg = "%s: PARSE SUCCESS" % example.name
-      except:
-        if not example.valid: num_correct += 1
-        debug_msg = "%s: PARSE FAILURE" % example.name
-      finally:
-        print debug_msg
+        if example.valid: 
+          num_correct += 1
+        else:
+          self.fail("Parsed invalid protocol: %s" % (example.name,))
+      except Exception, e:
+        if not example.valid: 
+          num_correct += 1
+        else:
+          self.fail("Coudl not parse valid protocol: %s" % (example.name,))
 
     fail_msg = "Parse behavior correct on %d out of %d protocols." % \
       (num_correct, len(EXAMPLES))
     self.assertEqual(num_correct, len(EXAMPLES), fail_msg)
+
+  def test_inner_namespace_set(self):
+    print ''
+    print 'TEST INNER NAMESPACE'
+    print '==================='
+    print ''
+    proto = protocol.parse(HELLO_WORLD.protocol_string)
+    self.assertEqual(proto.namespace, "com.acme")
+    greeting_type = proto.types_dict['Greeting']
+    self.assertEqual(greeting_type.namespace, 'com.acme')
+
+  def test_inner_namespace_not_rendered(self):
+    proto = protocol.parse(HELLO_WORLD.protocol_string)
+    self.assertEqual('com.acme.Greeting', proto.types[0].fullname)
+    self.assertEqual('Greeting', proto.types[0].name)
+    # but there shouldn't be 'namespace' rendered to json on the inner type
+    self.assertFalse('namespace' in proto.to_json()['types'][0])
 
   def test_valid_cast_to_string_after_parse(self):
     """
@@ -209,11 +395,12 @@ class TestProtocol(unittest.TestCase):
     for example in VALID_EXAMPLES:
       protocol_data = protocol.parse(example.protocol_string)
       try:
-        protocol.parse(str(protocol_data))
-        debug_msg = "%s: STRING CAST SUCCESS" % example.name
-        num_correct += 1
-      except:
-        debug_msg = "%s: STRING CAST FAILURE" % example.name
+        try:
+          protocol.parse(str(protocol_data))
+          debug_msg = "%s: STRING CAST SUCCESS" % example.name
+          num_correct += 1
+        except:
+          debug_msg = "%s: STRING CAST FAILURE" % example.name
       finally:
         print debug_msg
 
@@ -235,19 +422,14 @@ class TestProtocol(unittest.TestCase):
 
     num_correct = 0
     for example in VALID_EXAMPLES:
-      try:
-        original_protocol = protocol.parse(example.protocol_string)
-        round_trip_protocol = protocol.parse(str(original_protocol))
+      original_protocol = protocol.parse(example.protocol_string)
+      round_trip_protocol = protocol.parse(str(original_protocol))
 
-        if original_protocol == round_trip_protocol:
-          num_correct += 1
-          debug_msg = "%s: ROUND TRIP SUCCESS" % example.name
-        else:       
-          debug_msg = "%s: ROUND TRIP FAILURE" % example.name
-      except:
-        debug_msg = "%s: ROUND TRIP FAILURE" % example.name
-      finally:
-        print debug_msg
+      if original_protocol == round_trip_protocol:
+        num_correct += 1
+        debug_msg = "%s: ROUND TRIP SUCCESS" % example.name
+      else:       
+        self.fail("Round trip failure: %s %s %s", (example.name, example.protocol_string, str(original_protocol)))
 
     fail_msg = "Round trip success on %d out of %d protocols" % \
       (num_correct, len(VALID_EXAMPLES))

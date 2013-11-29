@@ -16,6 +16,7 @@
  */
 
 #include "avro_private.h"
+#include "avro/errors.h"
 #include <limits.h>
 #include <errno.h>
 #include <string.h>
@@ -44,12 +45,11 @@ schema_map_validate_foreach(char *key, avro_datum_t datum,
 int
 avro_schema_datum_validate(avro_schema_t expected_schema, avro_datum_t datum)
 {
+	check_param(EINVAL, expected_schema, "expected schema");
+	check_param(EINVAL, is_avro_datum(datum), "datum");
+
 	int rval;
 	long i;
-
-	if (!is_avro_schema(expected_schema) || !is_avro_datum(datum)) {
-		return EINVAL;
-	}
 
 	switch (avro_typeof(expected_schema)) {
 	case AVRO_NULL:
@@ -123,7 +123,7 @@ avro_schema_datum_validate(avro_schema_t expected_schema, avro_datum_t datum)
 			    { avro_schema_to_map(expected_schema)->values, 1
 			};
 			st_foreach(avro_datum_to_map(datum)->map,
-				   schema_map_validate_foreach,
+				   HASH_FUNCTION_CAST schema_map_validate_foreach,
 				   (st_data_t) & vst);
 			return vst.rval;
 		}

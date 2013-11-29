@@ -17,19 +17,45 @@
 # under the License.
 #
 
-add_executable(generate_interop_data generate_interop_data.c)
-target_link_libraries(generate_interop_data avro-static)
-add_executable(test_interop_data test_interop_data.c)
-target_link_libraries(test_interop_data avro-static)
+macro(add_avro_executable name)
+    set(source "${ARGV1}")
+    if (NOT source)
+        set(source "${name}.c")
+    endif (NOT source)
+    add_executable(${name} ${source})
+    target_link_libraries(${name} avro-static)
+endmacro(add_avro_executable)
 
-add_executable(test_avro_schema test_avro_schema.c)
-target_link_libraries(test_avro_schema avro-static)
-add_test(test_avro_schema ${CMAKE_COMMAND} -E chdir ${AvroC_SOURCE_DIR}/tests ${CMAKE_CURRENT_BINARY_DIR}/test_avro_schema)
+macro(add_avro_test name)
+    add_avro_executable(${name} ${ARGN})
+    if (WIN32)
+        set(exec_name ${CMAKE_CURRENT_BINARY_DIR}/Debug/${name}.exe)
+    else (WIN32)
+        set(exec_name ${CMAKE_CURRENT_BINARY_DIR}/${name})
+    endif (WIN32)
 
-add_executable(test_avro_data test_avro_data.c)
-target_link_libraries(test_avro_data avro-static)
-add_test(test_avro_data ${CMAKE_COMMAND} -E chdir ${AvroC_SOURCE_DIR}/tests ${CMAKE_CURRENT_BINARY_DIR}/test_avro_data)
+    add_test(${name}
+        ${CMAKE_COMMAND} -E chdir ${AvroC_SOURCE_DIR}/tests
+        ${exec_name}
+    )
+endmacro(add_avro_test)
 
-add_executable(test_cpp test_cpp.cpp)
-target_link_libraries(test_cpp avro-static)
-add_test(test_cpp ${CMAKE_COMMAND} -E chdir ${AvroC_SOURCE_DIR}/tests ${CMAKE_CURRENT_BINARY_DIR}/test_cpp)
+add_avro_executable(generate_interop_data)
+add_avro_executable(performance)
+add_avro_executable(test_interop_data)
+
+add_avro_test(test_data_structures)
+add_avro_test(test_avro_schema)
+add_avro_test(test_avro_schema_names)
+add_avro_test(test_avro_values)
+add_avro_test(test_avro_968)
+add_avro_test(test_avro_984)
+add_avro_test(test_avro_1034)
+add_avro_test(test_avro_1084)
+add_avro_test(test_avro_1087)
+add_avro_test(test_avro_1165)
+add_avro_test(test_avro_1238)
+add_avro_test(test_avro_1279)
+add_avro_test(test_avro_data)
+add_avro_test(test_refcount)
+add_avro_test(test_cpp test_cpp.cpp)

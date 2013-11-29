@@ -17,6 +17,7 @@
  * limitations under the License.
  */
 
+#include "boost/scoped_array.hpp"
 #include "Resolver.hh"
 #include "Layout.hh"
 #include "NodeImpl.hh"
@@ -375,7 +376,7 @@ class EnumParser : public Resolver
 
     virtual void parse(Reader &reader, uint8_t *address) const
     {
-        int64_t val = reader.readEnum();
+        size_t val = static_cast<size_t>(reader.readEnum());
         assert(static_cast<size_t>(val) < mapping_.size());
 
         if(mapping_[val] < readerSize_) {
@@ -402,7 +403,7 @@ class UnionSkipper : public Resolver
     virtual void parse(Reader &reader, uint8_t *address) const
     {
         DEBUG_OUT("Skipping union");
-        int64_t choice = reader.readUnion();
+        size_t choice = static_cast<size_t>(reader.readUnion());
         resolvers_[choice].parse(reader, address);
     }
 
@@ -423,7 +424,7 @@ class UnionParser : public Resolver
     virtual void parse(Reader &reader, uint8_t *address) const
     {
         DEBUG_OUT("Reading union");
-        int64_t writerChoice = reader.readUnion();
+        size_t writerChoice = static_cast<size_t>(reader.readUnion());
         int64_t *readerChoice = reinterpret_cast<int64_t *>(address + choiceOffset_);
 
         *readerChoice = choiceMapping_[writerChoice];
@@ -454,7 +455,7 @@ class UnionToNonUnionParser : public Resolver
     virtual void parse(Reader &reader, uint8_t *address) const
     {
         DEBUG_OUT("Reading union to non-union");
-        int64_t choice = reader.readUnion();
+        size_t choice = static_cast<size_t>(reader.readUnion());
         resolvers_[choice].parse(reader, address);
     }
 
@@ -506,8 +507,8 @@ class FixedSkipper : public Resolver
     virtual void parse(Reader &reader, uint8_t *address) const
     {
         DEBUG_OUT("Skipping fixed");
-        uint8_t val[size_];
-        reader.readFixed(val, size_);
+        boost::scoped_array<uint8_t> val(new uint8_t[size_]);
+        reader.readFixed(&val[0], size_);
     }
 
   protected:
@@ -555,7 +556,7 @@ class ResolverFactory : private boost::noncopyable {
     Resolver*
     constructPrimitive(const NodePtr &writer, const NodePtr &reader, const Layout &offset)
     {
-        Resolver *instruction;
+        Resolver *instruction = 0;
 
         SchemaResolution match = writer->resolve(*reader);
 
@@ -839,8 +840,10 @@ NonUnionToUnionParser::NonUnionToUnionParser(ResolverFactory &factory, const Nod
     choiceOffset_(offsets.at(0).offset()),
     setFuncOffset_(offsets.at(1).offset())
 {
-
-    SchemaResolution bestMatch = checkUnionMatch(writer, reader, choice_);
+#ifndef NDEBUG
+    SchemaResolution bestMatch =
+#endif
+    checkUnionMatch(writer, reader, choice_);
     assert(bestMatch != RESOLVE_NO_MATCH);
     resolver_.reset(factory.construct(writer, reader->leafAt(choice_), offsets.at(choice_+2)));
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2009 Petri Lehtinen <petri@digip.org>
+ * Copyright (c) 2009-2011 Petri Lehtinen <petri@digip.org>
  *
  * This library is free software; you can redistribute it and/or modify
  * it under the terms of the MIT license. See LICENSE for details.
@@ -7,8 +7,14 @@
 
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
+#ifdef __cplusplus
+extern "C" {
+#define CLOSE_EXTERN }
+#else
+#define CLOSE_EXTERN
+#endif
 
-typedef unsigned int (*key_hash_fn)(const void *key);
+typedef size_t (*key_hash_fn)(const void *key);
 typedef int (*key_cmp_fn)(const void *key1, const void *key2);
 typedef void (*free_fn)(void *key);
 
@@ -20,7 +26,7 @@ struct hashtable_list {
 struct hashtable_pair {
     void *key;
     void *value;
-    unsigned int hash;
+    size_t hash;
     struct hashtable_list list;
 };
 
@@ -30,9 +36,9 @@ struct hashtable_bucket {
 };
 
 typedef struct hashtable {
-    unsigned int size;
+    size_t size;
     struct hashtable_bucket *buckets;
-    unsigned int num_buckets;  /* index to primes[] */
+    size_t num_buckets;  /* index to primes[] */
     struct hashtable_list list;
 
     key_hash_fn hash_key;
@@ -161,6 +167,17 @@ void hashtable_clear(hashtable_t *hashtable);
 void *hashtable_iter(hashtable_t *hashtable);
 
 /**
+ * hashtable_iter_at - Return an iterator at a specific key
+ *
+ * @hashtable: The hashtable object
+ * @key: The key that the iterator should point to
+ *
+ * Like hashtable_iter() but returns an iterator pointing to a
+ * specific key.
+ */
+void *hashtable_iter_at(hashtable_t *hashtable, const void *key);
+
+/**
  * hashtable_iter_next - Advance an iterator
  *
  * @hashtable: The hashtable object
@@ -185,4 +202,13 @@ void *hashtable_iter_key(void *iter);
  */
 void *hashtable_iter_value(void *iter);
 
+/**
+ * hashtable_iter_set - Set the value pointed by an iterator
+ *
+ * @iter: The iterator
+ * @value: The value to set
+ */
+void hashtable_iter_set(hashtable_t *hashtable, void *iter, void *value);
+
+CLOSE_EXTERN
 #endif

@@ -17,6 +17,7 @@
  */
 
 #include <iostream>
+#include <string>
 #include <boost/static_assert.hpp>
 #include "Types.hh"
 
@@ -49,6 +50,16 @@ BOOST_STATIC_ASSERT( (sizeof(typeToString)/sizeof(std::string)) == (AVRO_NUM_TYP
 // this static assert exists because a 32 bit integer is used as a bit-flag for each type,
 // and it would be a problem for this flag if we ever supported more than 32 types
 BOOST_STATIC_ASSERT( AVRO_NUM_TYPES < 32 );
+
+const std::string& toString(Type type)
+{
+    static std::string undefinedType = "Undefined type";
+    if (isAvroTypeOrPseudoType(type)) {
+        return strings::typeToString[type];
+    } else {
+        return undefinedType;
+    }
+}
 
 std::ostream &operator<< (std::ostream &os, Type type)
 {

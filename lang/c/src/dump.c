@@ -15,12 +15,12 @@
  * permissions and limitations under the License. 
  */
 
-#include "avro_private.h"
-#include "dump.h"
 #include <ctype.h>
 #include <string.h>
+#include "avro_private.h"
+#include "dump.h"
 
-static void dump_line(FILE * out, const caddr_t addr, const long len)
+static void dump_line(FILE * out, const char *addr, const long len)
 {
 	int i;
 	fprintf(out, "|");
@@ -45,7 +45,7 @@ static void dump_line(FILE * out, const caddr_t addr, const long len)
 	}
 }
 
-void dump(FILE * out, const caddr_t addr, const long len)
+void dump(FILE * out, const char *addr, const long len)
 {
 	int i;
 	for (i = 0; i < len; i += 16) {

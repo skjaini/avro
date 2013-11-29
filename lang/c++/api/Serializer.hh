@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -21,8 +21,8 @@
 
 #include <boost/noncopyable.hpp>
 
+#include "Config.hh"
 #include "Writer.hh"
-#include "ValidatingWriter.hh"
 
 namespace avro {
 
@@ -36,13 +36,13 @@ class Serializer : private boost::noncopyable
   public:
 
     /// Constructor only works with Writer
-    explicit Serializer(OutputStreamer &out) :
-        writer_(out)
+    explicit Serializer() :
+        writer_()
     {}
 
     /// Constructor only works with ValidatingWriter
-    Serializer(const ValidSchema &schema, OutputStreamer &out) :
-        writer_(schema, out)
+    Serializer(const ValidSchema &schema) :
+        writer_(schema)
     {}
 
     void writeNull() {
@@ -91,6 +91,10 @@ class Serializer : private boost::noncopyable
         writer_.writeRecord();
     }
 
+    void writeRecordEnd() {
+        writer_.writeRecordEnd();
+    }
+
     void writeArrayBlock(int64_t size) {
         writer_.writeArrayBlock(size);
     }
@@ -113,6 +117,10 @@ class Serializer : private boost::noncopyable
 
     void writeEnum(int64_t choice) {
         writer_.writeEnum(choice);
+    }
+
+    InputBuffer buffer() const {
+        return writer_.buffer();
     }
 
   private:

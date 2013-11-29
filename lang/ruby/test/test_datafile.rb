@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -117,5 +118,71 @@ JSON
         end
       end
     end
+  end
+
+  def test_data_writer_handles_sync_interval
+    writer_schema = <<-JSON
+{ "type": "record",
+  "name": "something",
+  "fields": [
+    {"name": "something_boolean", "type": "boolean"}
+]}
+JSON
+
+    data = {"something_boolean" => true }
+
+    Avro::DataFile.open('data.avr', 'w', writer_schema) do |dw|
+      while dw.writer.tell < Avro::DataFile::SYNC_INTERVAL
+        dw << data
+      end
+      block_count = dw.block_count
+      dw << data
+      # ensure we didn't just write another block
+      assert_equal(block_count+1, dw.block_count)
+    end
+  end
+
+  def test_utf8
+    datafile = Avro::DataFile::open('data.avr', 'w', '"string"')
+    datafile << "家"
+    datafile.close
+
+    datafile = Avro::DataFile.open('data.avr')
+    datafile.each do |s|
+      assert_equal "家", s
+    end
+    datafile.close
+  end
+
+  def test_deflate
+    Avro::DataFile.open('data.avr', 'w', '"string"', :deflate) do |writer|
+      writer << 'a' * 10_000
+    end
+    assert(File.size('data.avr') < 500)
+
+    records = []
+    Avro::DataFile.open('data.avr') do |reader|
+      reader.each {|record| records << record }
+    end
+    assert_equal records, ['a' * 10_000]
+  end
+
+  def test_append_to_deflated_file
+    schema = Avro::Schema.parse('"string"')
+    writer = Avro::IO::DatumWriter.new(schema)
+    file = Avro::DataFile::Writer.new(File.open('data.avr', 'wb'), writer, schema, :deflate)
+    file << 'a' * 10_000
+    file.close
+
+    file = Avro::DataFile::Writer.new(File.open('data.avr', 'a+b'), writer)
+    file << 'b' * 10_000
+    file.close
+    assert(File.size('data.avr') < 1_000)
+
+    records = []
+    Avro::DataFile.open('data.avr') do |reader|
+      reader.each {|record| records << record }
+    end
+    assert_equal records, ['a' * 10_000, 'b' * 10_000]
   end
 end

@@ -38,6 +38,13 @@ uses the following mapping:
 """
 import struct
 from avro import schema
+import sys
+from binascii import crc32
+
+try:
+	import json
+except ImportError:
+	import simplejson as json
 
 #
 # Constants
@@ -49,10 +56,23 @@ LONG_MIN_VALUE = -(1 << 63)
 LONG_MAX_VALUE = (1 << 63) - 1
 
 # TODO(hammer): shouldn't ! be < for little-endian (according to spec?)
-STRUCT_INT = struct.Struct('!I')     # big-endian unsigned int
-STRUCT_LONG = struct.Struct('!Q')    # big-endian unsigned long long
-STRUCT_FLOAT = struct.Struct('!f')   # big-endian float
-STRUCT_DOUBLE = struct.Struct('!d')  # big-endian double
+if sys.version_info >= (2, 5, 0):
+  struct_class = struct.Struct
+else:
+  class SimpleStruct(object):
+    def __init__(self, format):
+      self.format = format
+    def pack(self, *args):
+      return struct.pack(self.format, *args)
+    def unpack(self, *args):
+      return struct.unpack(self.format, *args)
+  struct_class = SimpleStruct
+
+STRUCT_INT = struct_class('!I')     # big-endian unsigned int
+STRUCT_LONG = struct_class('!Q')    # big-endian unsigned long long
+STRUCT_FLOAT = struct_class('!f')   # big-endian float
+STRUCT_DOUBLE = struct_class('!d')  # big-endian double
+STRUCT_CRC32 = struct_class('>I')   # big-endian unsigned int
 
 #
 # Exceptions
@@ -61,14 +81,17 @@ STRUCT_DOUBLE = struct.Struct('!d')  # big-endian double
 class AvroTypeException(schema.AvroException):
   """Raised when datum is not an example of schema."""
   def __init__(self, expected_schema, datum):
+    pretty_expected = json.dumps(json.loads(str(expected_schema)), indent=2)
     fail_msg = "The datum %s is not an example of the schema %s"\
-               % (datum, expected_schema)
+               % (datum, pretty_expected)
     schema.AvroException.__init__(self, fail_msg)
 
 class SchemaResolutionException(schema.AvroException):
   def __init__(self, fail_msg, writers_schema=None, readers_schema=None):
-    if writers_schema: fail_msg += "\nWriter's Schema: %s" % writers_schema
-    if readers_schema: fail_msg += "\nReader's Schema: %s" % writers_schema
+    pretty_writers = json.dumps(json.loads(str(writers_schema)), indent=2)
+    pretty_readers = json.dumps(json.loads(str(readers_schema)), indent=2)
+    if writers_schema: fail_msg += "\nWriter's Schema: %s" % pretty_writers
+    if readers_schema: fail_msg += "\nReader's Schema: %s" % pretty_readers
     schema.AvroException.__init__(self, fail_msg)
 
 #
@@ -209,6 +232,11 @@ class BinaryDecoder(object):
     """
     return unicode(self.read_bytes(), "utf-8")
 
+  def check_crc32(self, bytes):
+    checksum = STRUCT_CRC32.unpack(self.read(4))[0];
+    if crc32(bytes) & 0xffffffff != checksum:
+      raise schema.AvroException("Checksum failure")
+
   def skip_null(self):
     pass
 
@@ -327,6 +355,12 @@ class BinaryEncoder(object):
     """
     datum = datum.encode("utf-8")
     self.write_bytes(datum)
+
+  def write_crc32(self, bytes):
+    """
+    A 4-byte, big-endian CRC32 checksum
+    """
+    self.write(STRUCT_CRC32.pack(crc32(bytes) & 0xffffffff));
 
 #
 # DatumReader/Writer
@@ -508,6 +542,10 @@ class DatumReader(object):
     """
     # read data
     index_of_symbol = decoder.read_int()
+    if index_of_symbol >= len(writers_schema.symbols):
+      fail_msg = "Can't access enum index %d for enum with %d symbols"\
+                 % (index_of_symbol, len(writers_schema.symbols))
+      raise SchemaResolutionException(fail_msg, writers_schema, readers_schema)
     read_symbol = writers_schema.symbols[index_of_symbol]
 
     # schema resolution
@@ -608,7 +646,7 @@ class DatumReader(object):
     index_of_schema = int(decoder.read_long())
     if index_of_schema >= len(writers_schema.schemas):
       fail_msg = "Can't access branch index %d for union with %d branches"\
-                 % (index_of_schema, writers_schema.schemas)
+                 % (index_of_schema, len(writers_schema.schemas))
       raise SchemaResolutionException(fail_msg, writers_schema, readers_schema)
     selected_writers_schema = writers_schema.schemas[index_of_schema]
     
@@ -617,6 +655,10 @@ class DatumReader(object):
 
   def skip_union(self, writers_schema, decoder):
     index_of_schema = int(decoder.read_long())
+    if index_of_schema >= len(writers_schema.schemas):
+      fail_msg = "Can't access branch index %d for union with %d branches"\
+                 % (index_of_schema, len(writers_schema.schemas))
+      raise SchemaResolutionException(fail_msg, writers_schema)
     return self.skip_data(writers_schema.schemas[index_of_schema], decoder)
 
   def read_record(self, writers_schema, readers_schema, decoder):
@@ -722,13 +764,13 @@ class DatumWriter(object):
                             set_writers_schema)
 
   def write(self, datum, encoder):
+    # validate datum
+    if not validate(self.writers_schema, datum):
+      raise AvroTypeException(self.writers_schema, datum)
+    
     self.write_data(self.writers_schema, datum, encoder)
 
   def write_data(self, writers_schema, datum, encoder):
-    # validate datum
-    if not validate(writers_schema, datum):
-      raise AvroTypeException(writers_schema, datum)
-    
     # function dispatch to write datum
     if writers_schema.type == 'null':
       encoder.write_null(datum)

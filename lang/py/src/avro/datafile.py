@@ -17,14 +17,17 @@
 Read/Write Avro File Object Containers.
 """
 import zlib
-import uuid
 try:
   from cStringIO import StringIO
 except ImportError:
   from StringIO import StringIO
 from avro import schema
 from avro import io
-
+try:
+  import snappy
+  has_snappy = True
+except ImportError:
+  has_snappy = False
 #
 # Constants
 #
@@ -42,6 +45,8 @@ META_SCHEMA = schema.parse("""\
    {"name": "sync", "type": {"type": "fixed", "name": "sync", "size": %d}}]}
 """ % (MAGIC_SIZE, SYNC_SIZE))
 VALID_CODECS = ['null', 'deflate']
+if has_snappy:
+    VALID_CODECS.append('snappy')
 VALID_ENCODINGS = ['binary'] # not used yet
 
 CODEC_KEY = "avro.codec"
@@ -65,7 +70,7 @@ class DataFileException(schema.AvroException):
 class DataFileWriter(object):
   @staticmethod
   def generate_sync_marker():
-    return uuid.uuid4().bytes
+    return generate_sixteen_random_bytes()
 
   # TODO(hammer): make 'encoder' a metadata property
   def __init__(self, writer, datum_writer, writers_schema=None, codec='null'):
@@ -81,6 +86,7 @@ class DataFileWriter(object):
     self._buffer_encoder = io.BinaryEncoder(self._buffer_writer)
     self._block_count = 0
     self._meta = {}
+    self._header_written = False
 
     if writers_schema is not None:
       if codec not in VALID_CODECS:
@@ -89,7 +95,6 @@ class DataFileWriter(object):
       self.set_meta('avro.codec', codec)
       self.set_meta('avro.schema', str(writers_schema))
       self.datum_writer.writers_schema = writers_schema
-      self._write_header()
     else:
       # open writer for reading to collect metadata
       dfr = DataFileReader(writer, io.DatumReader())
@@ -106,6 +111,7 @@ class DataFileWriter(object):
 
       # seek to the end of the file and prepare for writing
       writer.seek(0, 2)
+      self._header_written = True
 
   # read-only properties
   writer = property(lambda self: self._writer)
@@ -115,6 +121,14 @@ class DataFileWriter(object):
   buffer_encoder = property(lambda self: self._buffer_encoder)
   sync_marker = property(lambda self: self._sync_marker)
   meta = property(lambda self: self._meta)
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, type, value, traceback):
+    # Perform a close if there's no exception
+    if type is None:
+      self.close()
 
   # read/write properties
   def set_block_count(self, new_val):
@@ -132,9 +146,13 @@ class DataFileWriter(object):
               'meta': self.meta,
               'sync': self.sync_marker}
     self.datum_writer.write_data(META_SCHEMA, header, self.encoder)
+    self._header_written = True
 
   # TODO(hammer): make a schema for blocks and use datum_writer
   def _write_block(self):
+    if not self._header_written:
+      self._write_header()
+
     if self.block_count > 0:
       # write number of items in block
       self.encoder.write_long(self.block_count)
@@ -143,19 +161,28 @@ class DataFileWriter(object):
       uncompressed_data = self.buffer_writer.getvalue()
       if self.get_meta(CODEC_KEY) == 'null':
         compressed_data = uncompressed_data
+        compressed_data_length = len(compressed_data)
       elif self.get_meta(CODEC_KEY) == 'deflate':
         # The first two characters and last character are zlib
         # wrappers around deflate data.
         compressed_data = zlib.compress(uncompressed_data)[2:-1]
+        compressed_data_length = len(compressed_data)
+      elif self.get_meta(CODEC_KEY) == 'snappy':
+        compressed_data = snappy.compress(uncompressed_data)
+        compressed_data_length = len(compressed_data) + 4 # crc32
       else:
         fail_msg = '"%s" codec is not supported.' % self.get_meta(CODEC_KEY)
         raise DataFileException(fail_msg)
 
       # Write length of block
-      self.encoder.write_long(len(compressed_data))
+      self.encoder.write_long(compressed_data_length)
 
       # Write block
       self.writer.write(compressed_data)
+      
+      # Write CRC32 checksum for Snappy
+      if self.get_meta(CODEC_KEY) == 'snappy':
+        self.encoder.write_crc32(uncompressed_data)
 
       # write sync marker
       self.writer.write(self.sync_marker)
@@ -218,7 +245,15 @@ class DataFileReader(object):
     # get ready to read
     self._block_count = 0
     self.datum_reader.writers_schema = schema.parse(self.get_meta(SCHEMA_KEY))
-  
+
+  def __enter__(self):
+    return self
+
+  def __exit__(self, type, value, traceback):
+    # Perform a close if there's no exception
+    if type is None:
+      self.close()
+
   def __iter__(self):
     return self
 
@@ -281,7 +316,7 @@ class DataFileReader(object):
       # Skip a long; we don't need to use the length.
       self.raw_decoder.skip_long()
       self._datum_decoder = self._raw_decoder
-    else:
+    elif self.codec == 'deflate':
       # Compressed data is stored as (length, data), which
       # corresponds to how the "bytes" type is encoded.
       data = self.raw_decoder.read_bytes()
@@ -289,6 +324,15 @@ class DataFileReader(object):
       # "raw" (no zlib headers) decompression.  See zlib.h.
       uncompressed = zlib.decompress(data, -15)
       self._datum_decoder = io.BinaryDecoder(StringIO(uncompressed))
+    elif self.codec == 'snappy':
+      # Compressed data includes a 4-byte CRC32 checksum
+      length = self.raw_decoder.read_long()
+      data = self.raw_decoder.read(length - 4)
+      uncompressed = snappy.decompress(data)
+      self._datum_decoder = io.BinaryDecoder(StringIO(uncompressed))
+      self.raw_decoder.check_crc32(uncompressed);
+    else:
+      raise DataFileException("Unknown codec: %r" % self.codec)
 
   def _skip_sync(self):
     """
@@ -322,3 +366,11 @@ class DataFileReader(object):
   def close(self):
     """Close this reader."""
     self.reader.close()
+
+def generate_sixteen_random_bytes():
+  try:
+    import os
+    return os.urandom(16)
+  except:
+    import random
+    return [ chr(random.randrange(256)) for i in range(16) ]

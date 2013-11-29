@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -19,14 +19,12 @@
 #ifndef avro_ValidSchema_hh__ 
 #define avro_ValidSchema_hh__ 
 
-#include <boost/noncopyable.hpp>
-
+#include "Config.hh"
 #include "Node.hh"
 
 namespace avro {
 
-class Schema;
-class SymbolMap;
+class AVRO_DECL Schema;
 
 /// A ValidSchema is basically a non-mutable Schema that has passed some
 /// minumum of sanity checks.  Once valididated, any Schema that is part of
@@ -39,10 +37,9 @@ class SymbolMap;
 /// parsers/serializers, converted to a json schema, etc.
 ///
 
-class ValidSchema : private boost::noncopyable
-{
-  public:
-
+class AVRO_DECL ValidSchema {
+public:
+    explicit ValidSchema(const NodePtr &root);
     explicit ValidSchema(const Schema &schema);
     ValidSchema();
 
@@ -57,9 +54,6 @@ class ValidSchema : private boost::noncopyable
     void toFlatList(std::ostream &os) const;
 
   protected:
-
-    bool validate(const NodePtr &node, SymbolMap &symbolMap);
-
     NodePtr root_;
 };
 

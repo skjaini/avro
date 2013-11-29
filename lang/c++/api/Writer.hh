@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -21,112 +21,164 @@
 
 #include <boost/noncopyable.hpp>
 
-#include "OutputStreamer.hh"
+#include "Config.hh"
+#include "buffer/Buffer.hh"
 #include "Zigzag.hh"
 #include "Types.hh"
+#include "Validator.hh"
 
 namespace avro {
 
 /// Class for writing avro data to a stream.
 
-class Writer : private boost::noncopyable
+template<class ValidatorType>
+class WriterImpl : private boost::noncopyable
 {
 
   public:
 
-    explicit Writer(OutputStreamer &out) :
-        out_(out)
+    WriterImpl() {}
+
+    explicit WriterImpl(const ValidSchema &schema) :
+        validator_(schema) 
     {}
 
-    void writeValue(const Null &) {}
+    void writeValue(const Null &) {
+        validator_.checkTypeExpected(AVRO_NULL);
+    }
 
     void writeValue(bool val) {
+        validator_.checkTypeExpected(AVRO_BOOL);
         int8_t byte = (val != 0);
-        out_.writeByte(byte);
+        buffer_.writeTo(byte);
     }
 
     void writeValue(int32_t val) {
+        validator_.checkTypeExpected(AVRO_INT);
         boost::array<uint8_t, 5> bytes;
         size_t size = encodeInt32(val, bytes);
-        out_.writeBytes(bytes.data(), size);
+        buffer_.writeTo(reinterpret_cast<const char *>(bytes.data()), size);
     }
 
     void writeValue(int64_t val) {
-        boost::array<uint8_t, 10> bytes;
-        size_t size = encodeInt64(val, bytes);
-        out_.writeBytes(bytes.data(), size);
+        validator_.checkTypeExpected(AVRO_LONG);
+        putLong(val);
     }
 
     void writeValue(float val) {
+        validator_.checkTypeExpected(AVRO_FLOAT);
         union {
             float f;
             int32_t i;
         } v;
     
         v.f = val;
-        out_.writeWord(v.i);
+        buffer_.writeTo(v.i);
     }
 
     void writeValue(double val) {
+        validator_.checkTypeExpected(AVRO_DOUBLE);
         union {
             double d;
             int64_t i;
         } v;
         
         v.d = val;
-        out_.writeLongWord(v.i);
+        buffer_.writeTo(v.i);
     }
 
     void writeValue(const std::string &val) {
-        writeBytes(val.c_str(), val.size());
+        validator_.checkTypeExpected(AVRO_STRING);
+        putBytes(val.c_str(), val.size());
     }
 
     void writeBytes(const void *val, size_t size) {
-        this->writeValue(static_cast<int64_t>(size));
-        out_.writeBytes(val, size);
+        validator_.checkTypeExpected(AVRO_BYTES);
+        putBytes(val, size);
     }
 
     template <size_t N>
     void writeFixed(const uint8_t (&val)[N]) {
-        out_.writeBytes(val, N);
+        validator_.checkFixedSizeExpected(N);
+        buffer_.writeTo(reinterpret_cast<const char *>(val), N);
     }
 
     template <size_t N>
     void writeFixed(const boost::array<uint8_t, N> &val) {
-        out_.writeBytes(val.data(), val.size());
+        validator_.checkFixedSizeExpected(val.size());
+        buffer_.writeTo(reinterpret_cast<const char *>(val.data()), val.size());
     }
 
-    void writeRecord() {}
+    void writeRecord() {
+        validator_.checkTypeExpected(AVRO_RECORD);
+        validator_.checkTypeExpected(AVRO_LONG);
+        validator_.setCount(1);
+    }
+
+    void writeRecordEnd() {
+        validator_.checkTypeExpected(AVRO_RECORD);
+        validator_.checkTypeExpected(AVRO_LONG);
+        validator_.setCount(0);
+    }
 
     void writeArrayBlock(int64_t size) {
-        this->writeValue(static_cast<int64_t>(size));
+        validator_.checkTypeExpected(AVRO_ARRAY);
+        writeCount(size);
     }
 
     void writeArrayEnd() {
-        out_.writeByte(0);
+        writeArrayBlock(0);
     }
 
     void writeMapBlock(int64_t size) {
-        this->writeValue(static_cast<int64_t>(size));
+        validator_.checkTypeExpected(AVRO_MAP);
+        writeCount(size);
     }
 
     void writeMapEnd() {
-        out_.writeByte(0);
+        writeMapBlock(0);
     }
 
     void writeUnion(int64_t choice) {
-        this->writeValue(static_cast<int64_t>(choice));
+        validator_.checkTypeExpected(AVRO_UNION);
+        writeCount(choice);
     }
 
     void writeEnum(int64_t choice) {
-        this->writeValue(static_cast<int64_t>(choice));
+        validator_.checkTypeExpected(AVRO_ENUM);
+        writeCount(choice);
+    }
+
+    InputBuffer buffer() const {
+        return buffer_;
     }
 
   private:
 
-    OutputStreamer &out_;
+    void putLong(int64_t val) {
+        boost::array<uint8_t, 10> bytes;
+        size_t size = encodeInt64(val, bytes);
+        buffer_.writeTo(reinterpret_cast<const char *>(bytes.data()), size);
+    }
+
+    void putBytes(const void *val, size_t size) {
+        putLong(size);
+        buffer_.writeTo(reinterpret_cast<const char *>(val), size);
+    }
+
+    void writeCount(int64_t count) {
+        validator_.checkTypeExpected(AVRO_LONG);
+        validator_.setCount(count);
+        putLong(count);
+    }
+
+    ValidatorType validator_;
+    OutputBuffer buffer_;
 
 };
+
+typedef WriterImpl<NullValidator> Writer;
+typedef WriterImpl<Validator> ValidatingWriter;
 
 } // namespace avro
 
