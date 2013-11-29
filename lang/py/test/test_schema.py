@@ -254,6 +254,41 @@ RECORD_EXAMPLES = [
     """, False),
 ]
 
+DOC_EXAMPLES = [
+  ExampleSchema("""\
+    {"type": "record",
+     "name": "TestDoc",
+     "doc":  "Doc string",
+     "fields": [{"name": "name", "type": "string", 
+                 "doc" : "Doc String"}]}
+    """, True),
+  ExampleSchema("""\
+    {"type": "enum", "name": "Test", "symbols": ["A", "B"],
+     "doc": "Doc String"}
+    """, True),
+]
+
+OTHER_PROP_EXAMPLES = [
+  ExampleSchema("""\
+    {"type": "record",
+     "name": "TestRecord",
+     "cp_string": "string",
+     "cp_int": 1,
+     "cp_array": [ 1, 2, 3, 4],
+     "fields": [ {"name": "f1", "type": "string", "cp_object": {"a":1,"b":2} },
+                 {"name": "f2", "type": "long", "cp_null": null} ]}
+    """, True),
+  ExampleSchema("""\
+     {"type": "map", "values": "long", "cp_boolean": true}
+    """, True),
+  ExampleSchema("""\
+    {"type": "enum",
+     "name": "TestEnum",
+     "symbols": [ "one", "two", "three" ],
+     "cp_float" : 1.0 }
+    """,True),
+]
+
 EXAMPLES = PRIMITIVE_EXAMPLES
 EXAMPLES += FIXED_EXAMPLES
 EXAMPLES += ENUM_EXAMPLES
@@ -261,6 +296,7 @@ EXAMPLES += ARRAY_EXAMPLES
 EXAMPLES += MAP_EXAMPLES
 EXAMPLES += UNION_EXAMPLES
 EXAMPLES += RECORD_EXAMPLES
+EXAMPLES += DOC_EXAMPLES
 
 VALID_EXAMPLES = [e for e in EXAMPLES if e.valid]
 
@@ -270,19 +306,27 @@ VALID_EXAMPLES = [e for e in EXAMPLES if e.valid]
 # TODO(hammer): show strack trace to user
 # TODO(hammer): use logging module?
 class TestSchema(unittest.TestCase):
+
+  def test_correct_recursive_extraction(self):
+    s = schema.parse('{"type": "record", "name": "X", "fields": [{"name": "y", "type": {"type": "record", "name": "Y", "fields": [{"name": "Z", "type": "X"}]}}]}')
+    t = schema.parse(str(s.fields[0].type))
+    # If we've made it this far, the subschema was reasonably stringified; it ccould be reparsed.
+    self.assertEqual("X", t.fields[0].type.name)
+
   def test_parse(self):
-    print_test_name('TEST PARSE')
     correct = 0
     for example in EXAMPLES:
       try:
         schema.parse(example.schema_string)
-        if example.valid: correct += 1
-        debug_msg = "%s: PARSE SUCCESS" % example.name
+        if example.valid:
+          correct += 1
+        else:
+          self.fail("Invalid schema was parsed: " + example.schema_string)
       except:
-        if not example.valid: correct += 1
-        debug_msg = "%s: PARSE FAILURE" % example.name
-      finally:
-        print debug_msg
+        if not example.valid: 
+          correct += 1
+        else:
+          self.fail("Valid schema failed to parse: " + example.schema_string)
 
     fail_msg = "Parse behavior correct on %d out of %d schemas." % \
       (correct, len(EXAMPLES))
@@ -297,14 +341,8 @@ class TestSchema(unittest.TestCase):
     correct = 0
     for example in VALID_EXAMPLES:
       schema_data = schema.parse(example.schema_string)
-      try:
-        schema.parse(str(schema_data))
-        debug_msg = "%s: STRING CAST SUCCESS" % example.name
-        correct += 1
-      except:
-        debug_msg = "%s: STRING CAST FAILURE" % example.name
-      finally:
-        print debug_msg
+      schema.parse(str(schema_data))
+      correct += 1
 
     fail_msg = "Cast to string success on %d out of %d schemas" % \
       (correct, len(VALID_EXAMPLES))
@@ -320,18 +358,14 @@ class TestSchema(unittest.TestCase):
     print_test_name('TEST ROUND TRIP')
     correct = 0
     for example in VALID_EXAMPLES:
-      try:
-        original_schema = schema.parse(example.schema_string)
-        round_trip_schema = schema.parse(str(original_schema))
-        if original_schema == round_trip_schema:
-          correct += 1
-          debug_msg = "%s: ROUND TRIP SUCCESS" % example.name
-        else:       
-          debug_msg = "%s: ROUND TRIP FAILURE" % example.name
-      except:
+      original_schema = schema.parse(example.schema_string)
+      round_trip_schema = schema.parse(str(original_schema))
+      if original_schema == round_trip_schema:
+        correct += 1
+        debug_msg = "%s: ROUND TRIP SUCCESS" % example.name
+      else:       
         debug_msg = "%s: ROUND TRIP FAILURE" % example.name
-      finally:
-        print debug_msg
+        self.fail("Round trip failure: %s, %s, %s" % (example.name, original_schema, str(original_schema)))
 
     fail_msg = "Round trip success on %d out of %d schemas" % \
       (correct, len(VALID_EXAMPLES))
@@ -367,8 +401,75 @@ class TestSchema(unittest.TestCase):
     equivalent.
     """
     print_test_name('TEST FULLNAME')
-    fullname = schema.Name.make_fullname('a', 'o.a.h')
+
+    # name and namespace specified    
+    fullname = schema.Name('a', 'o.a.h', None).fullname
     self.assertEqual(fullname, 'o.a.h.a')
+
+    # fullname and namespace specified
+    fullname = schema.Name('a.b.c.d', 'o.a.h', None).fullname
+    self.assertEqual(fullname, 'a.b.c.d')
+    
+    # name and default namespace specified
+    fullname = schema.Name('a', None, 'b.c.d').fullname
+    self.assertEqual(fullname, 'b.c.d.a')
+
+    # fullname and default namespace specified
+    fullname = schema.Name('a.b.c.d', None, 'o.a.h').fullname
+    self.assertEqual(fullname, 'a.b.c.d')
+
+    # fullname, namespace, default namespace specified
+    fullname = schema.Name('a.b.c.d', 'o.a.a', 'o.a.h').fullname
+    self.assertEqual(fullname, 'a.b.c.d')
+
+    # name, namespace, default namespace specified
+    fullname = schema.Name('a', 'o.a.a', 'o.a.h').fullname
+    self.assertEqual(fullname, 'o.a.a.a')
+
+  def test_doc_attributes(self):
+    print_test_name('TEST DOC ATTRIBUTES')
+    correct = 0
+    for example in DOC_EXAMPLES:
+      original_schema = schema.parse(example.schema_string)
+      if original_schema.doc is not None:
+        correct += 1
+      if original_schema.type == 'record':
+        for f in original_schema.fields:
+          if f.doc is None:
+            self.fail("Failed to preserve 'doc' in fields: " + example.schema_string)
+    self.assertEqual(correct,len(DOC_EXAMPLES))
+
+  def test_other_attributes(self):
+    print_test_name('TEST OTHER ATTRIBUTES')
+    correct = 0
+    props = {}
+    for example in OTHER_PROP_EXAMPLES:
+      original_schema = schema.parse(example.schema_string)
+      round_trip_schema = schema.parse(str(original_schema))
+      self.assertEqual(original_schema.other_props,round_trip_schema.other_props)
+      if original_schema.type == "record":
+        field_props = 0
+        for f in original_schema.fields:
+          if f.other_props:
+            props.update(f.other_props)
+            field_props += 1
+        self.assertEqual(field_props,len(original_schema.fields))
+      if original_schema.other_props:
+        props.update(original_schema.other_props)
+        correct += 1
+    for k in props:
+      v = props[k]
+      if k == "cp_boolean":
+        self.assertEqual(type(v), bool)
+      elif k == "cp_int":
+        self.assertEqual(type(v), int)
+      elif k == "cp_object":
+        self.assertEqual(type(v), dict)
+      elif k == "cp_float":
+        self.assertEqual(type(v), float)
+      elif k == "cp_array":
+        self.assertEqual(type(v), list)
+    self.assertEqual(correct,len(OTHER_PROP_EXAMPLES))
 
 if __name__ == '__main__':
   unittest.main()

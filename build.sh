@@ -40,43 +40,64 @@ case "$target" in
 
     test)
 	# run lang-specific tests
-	(cd lang/java; ant test)
+        (cd lang/java; mvn test)
 	(cd lang/py; ant test)
 	(cd lang/c; ./build.sh test)
 	(cd lang/c++; ./build.sh test)
+	(cd lang/csharp; ./build.sh test)
+	(cd lang/js; ./build.sh test)
 	(cd lang/ruby; rake test)
+	(cd lang/php; ./build.sh test)
 
 	# create interop test data
-	(cd lang/java; ant interop-data-generate)
+        mkdir -p build/interop/data
+	(cd lang/java/avro; mvn -P interop-data-generate generate-resources)
 	(cd lang/py; ant interop-data-generate)
 	(cd lang/c; ./build.sh interop-data-generate)
 	#(cd lang/c++; make interop-data-generate)
 	(cd lang/ruby; rake generate_interop)
+	(cd lang/php; ./build.sh interop-data-generate)
 
 	# run interop data tests
-	(cd lang/java; ant interop-data-test)
+	(cd lang/java; mvn test -P interop-data-test)
 	(cd lang/py; ant interop-data-test)
 	(cd lang/c; ./build.sh interop-data-test)
 	#(cd lang/c++; make interop-data-test)
 	(cd lang/ruby; rake interop)
+	(cd lang/php; ./build.sh test-interop)
 
-	# run interop rpc tests
-	/bin/bash share/test/interop/bin/test_rpc_interop.sh
+	# java needs to package the jars for the interop rpc tests
+        (cd lang/java; mvn package -DskipTests)
+	# run interop rpc test
+        /bin/bash share/test/interop/bin/test_rpc_interop.sh
 
 	;;
 
     dist)
+        # ensure version matches
+        # FIXME: enforcer is broken:MENFORCER-42
+        # mvn enforcer:enforce -Davro.version=$VERSION
+        
 	# build source tarball
-	mkdir -p build
-	rm -rf build/avro-src-$VERSION
-	svn export --force . build/avro-src-$VERSION
-	(cd lang/java; ant rat)
+        mkdir -p build
+
+        SRC_DIR=avro-src-$VERSION
+
+	rm -rf build/${SRC_DIR}
+	svn export --force . build/${SRC_DIR}
+
+	#runs RAT on artifacts
+        mvn -N -P rat antrun:run
 
 	mkdir -p dist
-        (cd build; tar czf ../dist/avro-src-$VERSION.tar.gz avro-src-$VERSION)
+        (cd build; tar czf ../dist/${SRC_DIR}.tar.gz ${SRC_DIR})
 
 	# build lang-specific artifacts
-	(cd lang/java; ant dist)
+        
+	(cd lang/java; mvn package -DskipTests -Dhadoop.version=2; rm -rf mapred/target/classes/;
+	  mvn -P dist package -DskipTests -Davro.version=$VERSION javadoc:aggregate) 
+        (cd lang/java/trevni/doc; mvn site)
+        (mvn -N -P copy-artifacts antrun:run) 
 
 	(cd lang/py; ant dist)
 
@@ -84,7 +105,13 @@ case "$target" in
 
 	(cd lang/c++; ./build.sh dist)
 
+	(cd lang/csharp; ./build.sh dist)
+
+	(cd lang/js; ./build.sh dist)
+
 	(cd lang/ruby; rake dist)
+
+	(cd lang/php; ./build.sh dist)
 
 	# build docs
 	(cd doc; ant)
@@ -103,10 +130,11 @@ case "$target" in
 	stty echo
 
 	for f in $(find dist -type f \
-	    \! -name '*.sha1' \! -name '*.asc' \! -name '*.txt' );
+	    \! -name '*.md5' \! -name '*.sha1' \
+	    \! -name '*.asc' \! -name '*.txt' );
 	do
-	    md5sum $f > $f.md5
-	    sha1sum $f > $f.sha1
+	    (cd `dirname $f`; md5sum `basename $f`) > $f.md5
+	    (cd `dirname $f`; sha1sum `basename $f`) > $f.sha1
 	    gpg --passphrase $password --armor --output $f.asc --detach-sig $f
 	done
 
@@ -117,7 +145,7 @@ case "$target" in
 	rm -rf build dist
 	(cd doc; ant clean)
 
-	(cd lang/java; ant clean)
+        (mvn clean)         
 
 	(cd lang/py; ant clean)
 
@@ -125,8 +153,13 @@ case "$target" in
 
 	(cd lang/c++; ./build.sh clean)
 
+	(cd lang/csharp; ./build.sh clean)
+
+	(cd lang/js; ./build.sh clean)
+
 	(cd lang/ruby; rake clean)
 
+	(cd lang/php; ./build.sh clean)
 	;;
 
     *)

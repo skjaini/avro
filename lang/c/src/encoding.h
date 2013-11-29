@@ -16,7 +16,15 @@
  */
 #ifndef AVRO_ENCODING_H
 #define AVRO_ENCODING_H
-#include "avro.h"
+#ifdef __cplusplus
+extern "C" {
+#define CLOSE_EXTERN }
+#else
+#define CLOSE_EXTERN
+#endif
+
+#include <avro/platform.h>
+#include "avro/io.h"
 
 /*
  * TODO: this will need more functions when JSON encoding is added 
@@ -26,7 +34,7 @@ struct avro_encoding_t {
 	/*
 	 * string 
 	 */
-	int (*read_string) (avro_reader_t reader, char **s);
+	int (*read_string) (avro_reader_t reader, char **s, int64_t *len);
 	int (*skip_string) (avro_reader_t reader);
 	int (*write_string) (avro_writer_t writer, const char *s);
 	 int64_t(*size_string) (avro_writer_t writer, const char *s);
@@ -94,5 +102,5 @@ typedef struct avro_encoding_t avro_encoding_t;
 extern const avro_encoding_t avro_binary_encoding;	/* in
 							 * encoding_binary 
 							 */
-
+CLOSE_EXTERN
 #endif

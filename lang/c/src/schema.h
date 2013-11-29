@@ -14,14 +14,17 @@
  * implied.  See the License for the specific language governing
  * permissions and limitations under the License. 
  */
-#ifndef AVRO_SCHEMA_H
-#define AVRO_SCHEMA_H
+#ifndef AVRO_SCHEMA_PRIV_H
+#define AVRO_SCHEMA_PRIV_H
 
-#include "avro.h"
+#include <avro/platform.h>
+#include "avro/basics.h"
+#include "avro/schema.h"
 #include "avro_private.h"
 #include "st.h"
 
 struct avro_record_field_t {
+	int index;
 	char *name;
 	avro_schema_t type;
 	/*
@@ -57,6 +60,7 @@ struct avro_map_schema_t {
 struct avro_union_schema_t {
 	struct avro_obj_t obj;
 	st_table *branches;
+	st_table *branches_byname;
 };
 
 struct avro_fixed_schema_t {

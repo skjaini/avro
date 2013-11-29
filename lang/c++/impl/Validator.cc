@@ -26,14 +26,13 @@ namespace avro {
 
 Validator::Validator(const ValidSchema &schema) :
     schema_(schema),
-    parseTree_(schema.root()),
     nextType_(AVRO_NULL),
     expectedTypesFlag_(0),
     compoundStarted_(false),
     waitingForCount_(false),
     count_(0)
 {
-    setupOperation(parseTree_);
+    setupOperation(schema_.root());
 }
 
 void 
@@ -43,26 +42,6 @@ Validator::setWaitingForCount()
     count_ = 0;
     expectedTypesFlag_ = typeToFlag(AVRO_INT) | typeToFlag(AVRO_LONG);
     nextType_ = AVRO_LONG;
-}
-
-void
-Validator::recordAdvance()
-{
-    // record doesn't use this flag because it doesn't need to set
-    // up anything at the start, but just clear it
-    compoundStarted_ = false;
-
-    // determine the next record entry to process
-    size_t index = (compoundStack_.back().pos)++;
-
-    const NodePtr &node = compoundStack_.back().node;
-    if(index < node->leaves() ) {
-        setupOperation(node->leafAt(index));
-    }
-    else {
-        // done with this record, remove it from the processing stack
-        compoundStack_.pop_back();
-    }
 }
 
 void
@@ -78,28 +57,36 @@ Validator::enumAdvance()
     }
 }
 
-void
-Validator::countingAdvance()
+bool 
+Validator::countingSetup()
 {
-    const NodePtr &node = compoundStack_.back().node;
-
+    bool proceed = true;
     if(compoundStarted_) {
         setWaitingForCount();
         compoundStarted_ = false;
+        proceed = false;
     }
     else if(waitingForCount_) {
         waitingForCount_ = false;
         if(count_ == 0) {
             compoundStack_.pop_back();
+            proceed = false;
         }
         else {
-            counters_.push_back(count_);
-            setupOperation(node->leafAt(0));
+            counters_.push_back(static_cast<size_t>(count_));
         }
     }
-    else {
 
-        size_t index = ++(compoundStack_.back().pos);
+    return proceed;
+}
+
+void
+Validator::countingAdvance()
+{
+    if(countingSetup()) {
+    
+        size_t index = (compoundStack_.back().pos)++;
+        const NodePtr &node = compoundStack_.back().node;
 
         if(index < node->leaves() ) {
             setupOperation(node->leafAt(index));
@@ -114,7 +101,8 @@ Validator::countingAdvance()
                 expectedTypesFlag_ = typeToFlag(nextType_);
             }
             else {
-                setupOperation(node->leafAt(0));
+                size_t index = (compoundStack_.back().pos)++;
+                setupOperation(node->leafAt(index));
             }
         }
     }
@@ -133,10 +121,14 @@ Validator::unionAdvance()
 
         if(count_ < static_cast<int64_t>(node->leaves())) {
             compoundStack_.pop_back();
-            setupOperation(node->leafAt(count_));
+            setupOperation(node->leafAt(static_cast<int>(count_)));
         }
         else {
-            throw Exception("Union out of range");
+            throw Exception(
+                boost::format("Union selection out of range, got %1%," \
+                    " expecting 0-%2%")
+                    % count_ % (node->leaves() -1) 
+            );
         }
     }
 }
@@ -155,7 +147,7 @@ Validator::nextSizeExpected() const
 }
 
 void
-Validator::advance()
+Validator::doAdvance()
 {
     typedef void (Validator::*AdvanceFunc)();
 
@@ -169,7 +161,7 @@ Validator::advance()
         0, // double
         0, // bool
         0, // null
-        &Validator::recordAdvance,
+        &Validator::countingAdvance, // Record is treated like counting with count == 1
         &Validator::enumAdvance,
         &Validator::countingAdvance,
         &Validator::countingAdvance,
@@ -198,8 +190,15 @@ Validator::advance()
     }
 }
 
+void Validator::advance()
+{
+    if(!waitingForCount_) {
+        doAdvance();
+    }
+}
+
 void
-Validator::advanceWithCount(int64_t count) 
+Validator::setCount(int64_t count) 
 {
     if(!waitingForCount_) {
         throw Exception("Not expecting count");
@@ -209,7 +208,7 @@ Validator::advanceWithCount(int64_t count)
     }
     count_ = count;
 
-    advance();
+    doAdvance();
 }
 
 void
@@ -276,7 +275,7 @@ Validator::getCurrentRecordName(std::string &name) const
     }
     
     if(idx >= 0 && compoundStack_[idx].node->type() == AVRO_RECORD) {
-        name = compoundStack_[idx].node->name();
+        name = compoundStack_[idx].node->name().simpleName();
         found = true;
     }
     return found;

@@ -17,21 +17,26 @@
 
 #ifndef AVRO_DATUM_H
 #define AVRO_DATUM_H
-#include "avro.h"		/* for avro_schema_t */
+#include <avro/platform.h>
+#include "avro/basics.h"
+#include "avro/data.h"
+#include "avro/legacy.h"
+#include "avro/schema.h"
 #include "avro_private.h"
 #include "st.h"
 
 struct avro_string_datum_t {
 	struct avro_obj_t obj;
 	char *s;
-	void (*free) (void *ptr);
+	int64_t size;
+	avro_free_func_t  free;
 };
 
 struct avro_bytes_datum_t {
 	struct avro_obj_t obj;
 	char *bytes;
 	int64_t size;
-	void (*free) (void *ptr);
+	avro_free_func_t  free;
 };
 
 struct avro_int32_datum_t {
@@ -61,38 +66,42 @@ struct avro_boolean_datum_t {
 
 struct avro_fixed_datum_t {
 	struct avro_obj_t obj;
-	char *name;
+	avro_schema_t schema;
 	char *bytes;
 	int64_t size;
-	void (*free) (void *ptr);
+	avro_free_func_t  free;
 };
 
 struct avro_map_datum_t {
 	struct avro_obj_t obj;
+	avro_schema_t schema;
 	st_table *map;
+	st_table *indices_by_key;
+	st_table *keys_by_index;
 };
 
 struct avro_record_datum_t {
 	struct avro_obj_t obj;
-	const char *name;
-	const char *space;
+	avro_schema_t schema;
 	st_table *field_order;
 	st_table *fields_byname;
 };
 
 struct avro_enum_datum_t {
 	struct avro_obj_t obj;
-	const char *name;
+	avro_schema_t schema;
 	int value;
 };
 
 struct avro_array_datum_t {
 	struct avro_obj_t obj;
+	avro_schema_t schema;
 	st_table *els;
 };
 
 struct avro_union_datum_t {
 	struct avro_obj_t obj;
+	avro_schema_t schema;
 	int64_t discriminant;
 	avro_datum_t value;
 };

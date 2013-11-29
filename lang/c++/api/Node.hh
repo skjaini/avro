@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -19,6 +19,8 @@
 #ifndef avro_Node_hh__
 #define avro_Node_hh__
 
+#include "Config.hh"
+
 #include <cassert>
 #include <boost/noncopyable.hpp>
 #include <boost/shared_ptr.hpp>
@@ -33,6 +35,39 @@ class Node;
 
 typedef boost::shared_ptr<Node> NodePtr;
 
+class AVRO_DECL Name {
+    std::string ns_;
+    std::string simpleName_;
+public:
+    Name() { }
+    Name(const std::string& fullname);
+    Name(const std::string& simpleName, const std::string& ns) : ns_(ns), simpleName_(simpleName) { check(); }
+
+    const std::string fullname() const;
+    const std::string& ns() const { return ns_; }
+    const std::string& simpleName() const { return simpleName_; }
+
+    void ns(const std::string& n) { ns_ = n; }
+    void simpleName(const std::string& n) { simpleName_ = n; }
+    void fullname(const std::string& n);
+
+    bool operator < (const Name& n) const;
+    void check() const;
+    bool operator == (const Name& n) const;
+    bool operator != (const Name& n) const { return !((*this) == n); }
+    void clear() {
+        ns_.clear();
+        simpleName_.clear();
+    }
+    operator std::string() const {
+        return fullname();
+    }
+};
+
+inline
+std::ostream& operator << (std::ostream& os, const Name& n) {
+    return os << n.fullname();
+}
 
 /// Node is the building block for parse trees.  Each node represents an avro
 /// type.  Compound types have leaf nodes that represent the types they are
@@ -49,7 +84,7 @@ typedef boost::shared_ptr<Node> NodePtr;
 /// different node types.
 ///
 
-class Node : private boost::noncopyable
+class AVRO_DECL Node : private boost::noncopyable
 {
   public:
 
@@ -74,12 +109,12 @@ class Node : private boost::noncopyable
 
     virtual bool hasName() const = 0;
 
-    void setName(const std::string &name) {
+    void setName(const Name &name) {
         checkLock();
         checkName(name);
         doSetName(name);
     }
-    virtual const std::string &name() const = 0;
+    virtual const Name &name() const = 0;
 
     void addLeaf(const NodePtr &newLeaf) {
         checkLock();
@@ -111,11 +146,9 @@ class Node : private boost::noncopyable
 
     virtual void printBasicInfo(std::ostream &os) const = 0;
 
-  protected:
-
-    friend class ValidSchema;
-
     virtual void setLeafToSymbolic(int index, const NodePtr &node) = 0;
+
+  protected:
 
     void checkLock() const {
         if(locked()) {
@@ -123,9 +156,11 @@ class Node : private boost::noncopyable
         }
     }
 
-    void checkName(const std::string &name) const;
+    virtual void checkName(const Name &name) const {
+        name.check();
+    }
 
-    virtual void doSetName(const std::string &name) = 0;
+    virtual void doSetName(const Name &name) = 0;
     virtual void doAddLeaf(const NodePtr &newLeaf) = 0;
     virtual void doAddName(const std::string &name) = 0;
     virtual void doSetFixedSize(int size) = 0;
@@ -137,5 +172,14 @@ class Node : private boost::noncopyable
 };
 
 } // namespace avro
+
+namespace std {
+inline std::ostream& operator<<(std::ostream& os, const avro::Node& n)
+{
+    n.printJson(os, 0);
+    return os;
+}
+}
+
 
 #endif

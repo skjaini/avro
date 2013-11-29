@@ -108,4 +108,11 @@ FixedSchema::FixedSchema(int size, const std::string &name) :
     node_->setName(name);
 }
 
+SymbolicSchema::SymbolicSchema(const Name &name, const NodePtr& link) :
+    Schema(new NodeSymbolic(HasName(name), link))
+{
+}
+
+
+
 } // namespace avro

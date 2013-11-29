@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -19,8 +19,8 @@
 #ifndef avro_Parser_hh__
 #define avro_Parser_hh__
 
+#include "Config.hh"
 #include "Reader.hh"
-#include "ValidatingReader.hh"
 
 namespace avro {
 
@@ -36,12 +36,12 @@ class Parser : private boost::noncopyable
   public:
 
     // Constructor only works with Writer
-    explicit Parser(InputStreamer &in) :
+    explicit Parser(const InputBuffer &in) :
         reader_(in)
     {}
 
     /// Constructor only works with ValidatingWriter
-    Parser(const ValidSchema &schema, InputStreamer &in) :
+    Parser(const ValidSchema &schema, const InputBuffer &in) :
         reader_(schema, in)
     {}
 
@@ -100,6 +100,10 @@ class Parser : private boost::noncopyable
 
     void readRecord() { 
         reader_.readRecord();
+    }
+
+    void readRecordEnd() { 
+        reader_.readRecordEnd();
     }
 
     int64_t readArrayBlockSize() {

@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -23,9 +23,11 @@
 #include <vector>
 #include <boost/noncopyable.hpp>
 
-#include "InputStreamer.hh"
+#include "Config.hh"
 #include "Zigzag.hh"
 #include "Types.hh"
+#include "Validator.hh"
+#include "buffer/BufferReader.hh"
 
 namespace avro {
 
@@ -34,114 +36,144 @@ namespace avro {
 /// in the avro binary data is the expected type.
 ///
 
-class Reader : private boost::noncopyable
+template<class ValidatorType>
+class ReaderImpl : private boost::noncopyable
 {
 
   public:
 
-    explicit Reader(InputStreamer &in) :
-        in_(in)
+    explicit ReaderImpl(const InputBuffer &buffer) :
+        reader_(buffer)
     {}
 
-    void readValue(Null &) {}
+    ReaderImpl(const ValidSchema &schema, const InputBuffer &buffer) :
+        validator_(schema),
+        reader_(buffer)
+    {}
+
+    void readValue(Null &) {
+        validator_.checkTypeExpected(AVRO_NULL);
+    }
 
     void readValue(bool &val) {
-        uint8_t ival;
-        in_.readByte(ival);
+        validator_.checkTypeExpected(AVRO_BOOL);
+        uint8_t ival = 0;
+        reader_.read(ival);
         val = (ival != 0);
     }
 
     void readValue(int32_t &val) {
-        uint32_t encoded = readVarInt();
+        validator_.checkTypeExpected(AVRO_INT);
+        uint32_t encoded = static_cast<uint32_t>(readVarInt());
         val = decodeZigzag32(encoded);
     }
 
     void readValue(int64_t &val) {
+        validator_.checkTypeExpected(AVRO_LONG);
         uint64_t encoded = readVarInt();
         val = decodeZigzag64(encoded);
     }
 
     void readValue(float &val) {
+        validator_.checkTypeExpected(AVRO_FLOAT);
         union { 
             float f;
             uint32_t i;
         } v;
-        in_.readWord(v.i);
+        reader_.read(v.i);
         val = v.f;
     }
 
     void readValue(double &val) {
+        validator_.checkTypeExpected(AVRO_DOUBLE);
         union { 
             double d;
             uint64_t i;
         } v;
-        in_.readLongWord(v.i);
+        reader_.read(v.i);
         val = v.d;
     }
 
     void readValue(std::string &val) {
-        int64_t size = readSize();
-        val.clear();
-        val.reserve(size);
-        uint8_t bval;
-        for(size_t bytes = 0; bytes < static_cast<size_t>(size); bytes++) {
-            in_.readByte(bval);
-            val.push_back(bval);
-        }
+        validator_.checkTypeExpected(AVRO_STRING);
+        size_t size = static_cast<size_t>(readSize());
+        reader_.read(val, size);
     }
 
     void readBytes(std::vector<uint8_t> &val) {
-        int64_t size = readSize();
+        validator_.checkTypeExpected(AVRO_BYTES);
+        size_t size = static_cast<size_t>(readSize());
         val.resize(size);
-        in_.readBytes(&val[0], size);
+        reader_.read(reinterpret_cast<char *>(&val[0]), size);
     }
 
     void readFixed(uint8_t *val, size_t size) {
-        in_.readBytes(val, size);
+        validator_.checkFixedSizeExpected(size);
+        reader_.read(reinterpret_cast<char *>(val), size);
     }
 
     template <size_t N>
     void readFixed(uint8_t (&val)[N]) {
-        readFixed(val, N);
+        this->readFixed(val, N);
     }
   
     template <size_t N>
     void readFixed(boost::array<uint8_t, N> &val) {
-        readFixed(val.c_array(), N);
+        this->readFixed(val.c_array(), N);
     }
   
-    void readRecord() { }
+    void readRecord() { 
+        validator_.checkTypeExpected(AVRO_RECORD);
+        validator_.checkTypeExpected(AVRO_LONG);
+        validator_.setCount(1);
+    }
+
+    void readRecordEnd() { 
+        validator_.checkTypeExpected(AVRO_RECORD);
+        validator_.checkTypeExpected(AVRO_LONG);
+        validator_.setCount(0);
+    }
 
     int64_t readArrayBlockSize() {
-        return readSize();
+        validator_.checkTypeExpected(AVRO_ARRAY);
+        return readCount();
     }
 
     int64_t readUnion() { 
-        return readSize();
+        validator_.checkTypeExpected(AVRO_UNION);
+        return readCount();
     }
 
     int64_t readEnum() {
-        return readSize();
+        validator_.checkTypeExpected(AVRO_ENUM);
+        return readCount();
     }
 
     int64_t readMapBlockSize() {
-        return readSize();
+        validator_.checkTypeExpected(AVRO_MAP);
+        return readCount();
+    }
+
+    Type nextType() const {
+        return validator_.nextTypeExpected();
+    }
+
+    bool currentRecordName(std::string &name) const {
+        return validator_.getCurrentRecordName(name);
+    }
+
+    bool nextFieldName(std::string &name) const {
+        return validator_.getNextFieldName(name);
     }
 
   private:
-
-    int64_t readSize() {
-        int64_t size(0);
-        readValue(size);
-        return size;
-    }
 
     uint64_t readVarInt() {
         uint64_t encoded = 0;
         uint8_t val = 0;
         int shift = 0;
         do {
-            in_.readByte(val);
+            reader_.read(val);
             uint64_t newbits = static_cast<uint64_t>(val & 0x7f) << shift;
             encoded |= newbits;
             shift += 7;
@@ -150,10 +182,26 @@ class Reader : private boost::noncopyable
         return encoded;
     }
 
-    InputStreamer &in_;
+    int64_t readSize() {
+        uint64_t encoded = readVarInt();
+        int64_t size = decodeZigzag64(encoded);
+        return size;
+    }
+
+    int64_t readCount() {
+        validator_.checkTypeExpected(AVRO_LONG);
+        int64_t count = readSize();
+        validator_.setCount(count);
+        return count;
+    }
+
+    ValidatorType validator_;
+    BufferReader  reader_;
 
 };
 
+typedef ReaderImpl<NullValidator> Reader;
+typedef ReaderImpl<Validator> ValidatingReader;
 
 } // namespace avro
 

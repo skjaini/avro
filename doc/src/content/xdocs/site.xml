@@ -41,11 +41,17 @@ See http://forrest.apache.org/docs/linking.html for more info
 
   <docs label="Documentation"> 
     <overview   label="Overview"          href="index.html" />
+    <gettingstartedjava label="Getting started (Java)" href="gettingstartedjava.html" />
+    <gettingstartedpython label="Getting started (Python)" href="gettingstartedpython.html" />
     <spec       label="Specification"     href="spec.html" />
+    <trevni     label="Trevni"            href="ext:trevni/spec" />
     <java-api   label="Java API"          href="ext:api/java/index" />
     <c-api      label="C API"             href="ext:api/c/index" />
     <cpp-api    label="C++ API"           href="ext:api/cpp/index" />
-    <genavro    label="GenAvro language"  href="genavro.html" />
+    <csharp-api label="C# API"            href="ext:api/csharp/index" />
+    <mr         label="MapReduce guide"  href="mr.html" />
+    <idl        label="IDL language"      href="idl.html" />
+    <sasl       label="SASL profile"      href="sasl.html" />
     <wiki       label="Wiki"              href="ext:wiki" />
     <faq        label="FAQ"               href="ext:faq" />
   </docs>
@@ -61,7 +67,7 @@ See http://forrest.apache.org/docs/linking.html for more info
     <wiki      href="http://wiki.apache.org/hadoop/Avro/" />
     <faq       href="http://wiki.apache.org/hadoop/Avro/FAQ" />
     <json      href="http://www.json.org/" />
-    <vint      href="http://lucene.apache.org/java/2_4_0/fileformats.html#VInt"/>
+    <vint      href="http://lucene.apache.org/java/3_5_0/fileformats.html#VInt"/>
     <zigzag    href="http://code.google.com/apis/protocolbuffers/docs/encoding.html#types"/>
     <api href="api/">
       <c href="c/">
@@ -70,10 +76,16 @@ See http://forrest.apache.org/docs/linking.html for more info
       <cpp href="cpp/">
 	<index href="html/index.html" />
       </cpp>
+      <csharp href="csharp/">
+	<index href="index.html" />
+      </csharp>
       <java href="java/">
 	<index href="index.html" />
       </java>
     </api>
+    <trevni href="trevni/">
+      <spec href="spec.html"/>
+    </trevni>
   </external-refs>
  
 </site>

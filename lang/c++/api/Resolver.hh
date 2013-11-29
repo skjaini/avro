@@ -1,5 +1,4 @@
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -23,16 +22,18 @@
 #include <boost/noncopyable.hpp>
 #include <stdint.h>
 
+#include "Config.hh"
+#include "Reader.hh"
+
 /// \file Resolver.hh
 ///
 
 namespace avro {
 
-class Reader;
 class ValidSchema;
 class Layout;
     
-class Resolver : private boost::noncopyable
+class AVRO_DECL Resolver : private boost::noncopyable
 {
 
   public:

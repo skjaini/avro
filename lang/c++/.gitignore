@@ -1,5 +1,6 @@
-autom4te.cache
-Makefile.in
-configure
-INSTALL
-aclocal.m4
+.svn/
+build/
+build.win/
+doc/
+m4/
+test.avro

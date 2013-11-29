@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require "net/http"
+
 module Avro::IPC
 
   class AvroRemoteError < Avro::AvroError; end
@@ -240,7 +242,7 @@ module Avro::IPC
 
     # Called by a server to deserialize a request, compute and serialize
     # a response or error. Compare to 'handle()' in Thrift.
-    def respond(call_request)
+    def respond(call_request, transport=nil)
       buffer_decoder = Avro::IO::BinaryDecoder.new(StringIO.new(call_request))
       buffer_writer = StringIO.new('', 'w+')
       buffer_encoder = Avro::IO::BinaryEncoder.new(buffer_writer)
@@ -248,7 +250,7 @@ module Avro::IPC
       response_metadata = {}
 
       begin
-        remote_protocol = process_handshake(buffer_decoder, buffer_encoder)
+        remote_protocol = process_handshake(buffer_decoder, buffer_encoder, transport)
         # handshake failure
         unless remote_protocol
           return buffer_writer.string
@@ -300,7 +302,10 @@ module Avro::IPC
       buffer_writer.string
     end
 
-    def process_handshake(decoder, encoder)
+    def process_handshake(decoder, encoder, connection=nil)
+      if connection && connection.is_connected?
+        return connection.protocol
+      end
       handshake_request = HANDSHAKE_RESPONDER_READER.read(decoder)
       handshake_response = {}
 
@@ -336,6 +341,11 @@ module Avro::IPC
       end
 
       HANDSHAKE_RESPONDER_WRITER.write(handshake_response, encoder)
+
+      if connection && handshake_response['match'] != 'NONE'
+        connection.protocol = remote_protocol
+      end
+
       remote_protocol
     end
 
@@ -364,9 +374,15 @@ module Avro::IPC
     # A simple socket-based Transport implementation.
 
     attr_reader :sock, :remote_name
+    attr_accessor :protocol
 
     def initialize(sock)
       @sock = sock
+      @protocol = nil
+    end
+
+    def is_connected?()
+      !!@protocol
     end
 
     def transceive(request)
@@ -397,7 +413,7 @@ module Avro::IPC
       message_length = message.size
       total_bytes_sent = 0
       while message_length - total_bytes_sent > 0
-        if message_length - total_bytes_sent > BUFFER_SIZE:
+        if message_length - total_bytes_sent > BUFFER_SIZE
           buffer_length = BUFFER_SIZE
         else
           buffer_length = message_length - total_bytes_sent
@@ -521,14 +537,13 @@ module Avro::IPC
     def initialize(host, port)
       @host, @port = host, port
       @remote_name = "#{host}:#{port}"
+      @conn = Net::HTTP.start host, port
     end
 
     def transceive(message)
       writer = FramedWriter.new(StringIO.new)
       writer.write_framed_message(message)
-      resp = Net::HTTP.start(host, port) do |http|
-        http.post('/', writer.to_s, {'Content-Type' => 'avro/binary'})
-      end
+      resp = @conn.post('/', writer.to_s, {'Content-Type' => 'avro/binary'})
       FramedReader.new(StringIO.new(resp.body)).read_framed_message
     end
   end

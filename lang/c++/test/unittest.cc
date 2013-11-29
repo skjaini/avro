@@ -25,12 +25,12 @@
 #include "Node.hh"
 #include "Schema.hh"
 #include "ValidSchema.hh"
-#include "OutputStreamer.hh"
 #include "Serializer.hh"
 #include "Parser.hh"
-#include "SymbolMap.hh"
 #include "Compiler.hh"
 #include "SchemaResolution.hh"
+#include "buffer/BufferStream.hh"
+#include "buffer/BufferPrint.hh"
 
 #include "AvroSerialize.hh"
 
@@ -38,6 +38,9 @@ using namespace avro;
 
 static const uint8_t fixeddata[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
 
+#ifdef max
+#undef max
+#endif
 struct TestSchema
 {
     TestSchema() 
@@ -215,6 +218,7 @@ struct TestSchema
         std::cout << "Record\n";
         s.writeRecord();
         s.writeFloat(-101.101f);
+        s.writeRecordEnd();
 
         std::cout << "Bool\n";
         s.writeBool(true);
@@ -228,29 +232,32 @@ struct TestSchema
 
         std::cout << "Int\n";
         s.writeInt(-3456);
+        s.writeRecordEnd();
     }
 
     void printEncoding() {
         std::cout << "Encoding\n";
-        ScreenStreamer os;
-        Serializer<Writer> s(os);
+        Serializer<Writer> s;
         writeEncoding(s, 0);
+        std::cout << s.buffer();
     }
 
     void printValidatingEncoding(int path)
     {
         std::cout << "Validating Encoding " << path << "\n";
-        ScreenStreamer os;
-        Serializer<ValidatingWriter> s(schema_, os);
+        Serializer<ValidatingWriter> s(schema_);
         writeEncoding(s, path);
+        std::cout << s.buffer();
     }
 
     void saveValidatingEncoding(int path) 
     {
         std::ofstream out("test.avro");
-        OStreamer os(out);
-        Serializer<ValidatingWriter> s(schema_, os);
+        Serializer<ValidatingWriter> s(schema_);
         writeEncoding(s, path);
+        InputBuffer buf = s.buffer();
+        istream is(buf);
+        out << is.rdbuf();
     }
 
     void printNext(Parser<Reader> &p) {
@@ -318,13 +325,14 @@ struct TestSchema
         float f = p.readFloat();
         std::cout << f << '\n';
         BOOST_CHECK_EQUAL(f, -101.101f);
+        p.readRecordEnd();
     }
 
     template <typename Parser>
     void readFixed(Parser &p) {
 
         boost::array<uint8_t, 16> input;
-        p.readFixed<16>(input);
+        p.readFixed(input);
         BOOST_CHECK_EQUAL(input.size(), 16U);
 
         for(int i=0; i< 16; ++i) {
@@ -375,20 +383,23 @@ struct TestSchema
         int32_t intval = p.readInt();
         std::cout << intval << '\n';
         BOOST_CHECK_EQUAL(intval, -3456);
+        p.readRecordEnd();
     }
 
     void readRawData() {
         std::ifstream in("test.avro");
-        IStreamer ins(in);
-        Parser<Reader> p(ins);
+        ostream os;
+        os << in.rdbuf();
+        Parser<Reader> p(os.getBuffer());
         readData(p);
     }
 
     void readValidatedData()
     {
         std::ifstream in("test.avro");
-        IStreamer ins(in);
-        Parser<ValidatingReader> p(schema_, ins);
+        ostream os;
+        os << in.rdbuf();
+        Parser<ValidatingReader> p(schema_, os.getBuffer());
         readData(p);
     }
 
@@ -458,32 +469,6 @@ struct TestEncoding {
 
 };
 
-struct TestSymbolMap
-{
-    TestSymbolMap()
-    {}
-
-    void test() 
-    {
-        std::cout << "TestSymbolMap\n";
-        std::string name("myrecord");
-
-        RecordSchema rec(name);
-
-        NodePtr node = map_.locateSymbol(name);
-        BOOST_CHECK(node == 0);
-
-        map_.registerSymbol(rec.root());
-
-        node = map_.locateSymbol(name);
-        BOOST_CHECK(node);
-        BOOST_CHECK_EQUAL(node->name(), name);
-        std::cout << "Found " << name << " registered\n";
-    }
-
-    SymbolMap map_;
-};
-
 struct TestNested
 {
     TestNested()
@@ -496,7 +481,7 @@ struct TestNested
         rec.addField("value", LongSchema());
         UnionSchema next;
         next.addType(NullSchema());
-        next.addType(rec);
+        next.addType(SymbolicSchema(Name("LongList"), rec.root()));
         rec.addField("next", next);
         rec.addField("end", BoolSchema());
 
@@ -505,21 +490,24 @@ struct TestNested
         schema_.toFlatList(std::cout);
     }
 
-    void serializeNoRecurse(OutputStreamer &os)
+    InputBuffer serializeNoRecurse()
     {
         std::cout << "No recurse\n";
-        Serializer<ValidatingWriter> s(schema_, os);
+        Serializer<ValidatingWriter> s(schema_);
         s.writeRecord();
         s.writeLong(1);
         s.writeUnion(0);
         s.writeNull();
         s.writeBool(true);
+        s.writeRecordEnd();
+
+        return s.buffer();
     }
 
-    void serializeRecurse(OutputStreamer &os)
+    InputBuffer serializeRecurse()
     {
         std::cout << "Recurse\n";
-        Serializer<ValidatingWriter> s(schema_, os);
+        Serializer<ValidatingWriter> s(schema_);
         s.writeRecord();
         s.writeLong(1);
         s.writeUnion(1);
@@ -531,56 +519,64 @@ struct TestNested
                 s.writeRecord();
                 s.writeLong(3);
                 s.writeUnion(0);
+                { 
+                    s.writeNull();
+                }
+                s.writeBool(false);
+                s.writeRecordEnd();
             }
-            s.writeNull();
+            s.writeBool(false);
+            s.writeRecordEnd();
+
         }
         s.writeBool(true);
+        s.writeRecordEnd();
+
+        return s.buffer();
     }
 
-    void validatingParser(InputStreamer &is) 
+    void readRecord(Parser<ValidatingReader> &p) 
     {
-        Parser<ValidatingReader> p(schema_, is);
-        int64_t val = 0;
-        int64_t path = 0;
-    
-        do {
-            p.readRecord();
-            val = p.readLong();
-            std::cout << "longval = " << val << '\n';
-            path = p.readUnion();
-        } while(path == 1);
-
-        p.readNull();
+        p.readRecord();
+        int64_t val = p.readLong();
+        std::cout << "longval = " << val << '\n';
+        int64_t path = p.readUnion();
+        if (path == 1) {
+            readRecord(p);
+        }
+        else {
+            p.readNull();
+        }
         bool b = p.readBool();
         std::cout << "bval = " << b << '\n';
+        p.readRecordEnd();
+    }
+
+    void validatingParser(InputBuffer &buf) 
+    {
+        Parser<ValidatingReader> p(schema_, buf);
+        readRecord(p);
     }
 
     void testToScreen() {
-        ScreenStreamer os;
-        serializeNoRecurse(os);
-        serializeRecurse(os);
+        InputBuffer buf1 = serializeNoRecurse();
+        InputBuffer buf2 = serializeRecurse();
+        std::cout << buf1;
+        std::cout << buf2;
     }
 
     void testParseNoRecurse() {
-        std::ostringstream ostring;
-        OStreamer os(ostring);
-        serializeNoRecurse(os);
         std::cout << "ParseNoRecurse\n";
-
-        std::istringstream istring(ostring.str());
-        IStreamer is(istring);
-        validatingParser(is);
+        InputBuffer buf = serializeNoRecurse();
+    
+        validatingParser(buf);
     }
 
     void testParseRecurse() {
-        std::ostringstream ostring;
-        OStreamer os(ostring);
-        serializeRecurse(os);
         std::cout << "ParseRecurse\n";
+        InputBuffer buf = serializeRecurse();
 
-        std::istringstream istring(ostring.str());
-        IStreamer is(istring);
-        validatingParser(is);
+        validatingParser(buf);
     }
 
 
@@ -608,13 +604,13 @@ struct TestGenerated
         int32_t val = 100;
         float   f   = 200.0;
 
-        ScreenStreamer os;
-        Writer writer(os);
+        Writer writer;
 
         serialize(writer, val);
         serialize(writer, Null());
         serialize(writer, f);
-        
+
+        std::cout << writer.buffer();
     }
 };
 
@@ -788,7 +784,6 @@ init_unit_test_suite( int argc, char* argv[] )
 
     addTestCase<TestEncoding>(*test);
     addTestCase<TestSchema>(*test);
-    addTestCase<TestSymbolMap>(*test);
     addTestCase<TestNested>(*test);
     addTestCase<TestGenerated>(*test);
     addTestCase<TestBadStuff>(*test);

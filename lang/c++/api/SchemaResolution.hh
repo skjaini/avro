@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -18,6 +18,8 @@
 
 #ifndef avro_SchemaResolution_hh__
 #define avro_SchemaResolution_hh__
+
+#include "Config.hh"
 
 namespace avro {
 

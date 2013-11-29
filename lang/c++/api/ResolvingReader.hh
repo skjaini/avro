@@ -1,5 +1,4 @@
-
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -23,19 +22,18 @@
 #include <stdint.h>
 #include <boost/noncopyable.hpp>
 
+#include "Config.hh"
 #include "ResolverSchema.hh"
 #include "Reader.hh"
 
 namespace avro {
 
-class InputStreamer;
-
-class ResolvingReader : private boost::noncopyable
+class AVRO_DECL ResolvingReader : private boost::noncopyable
 {
 
   public:
 
-    ResolvingReader(const ResolverSchema &schema, InputStreamer &in) :
+    ResolvingReader(const ResolverSchema &schema, const InputBuffer &in) :
         reader_(in),
         schema_(schema)
     {}
