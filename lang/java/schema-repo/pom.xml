@@ -23,7 +23,7 @@
   <parent>
     <artifactId>avro-parent</artifactId>
     <groupId>org.apache.avro</groupId>
-    <version>1.7.5</version>
+    <version>1.7.5-1124-SNAPSHOT</version>
     <relativePath>../</relativePath>
   </parent>
 
@@ -42,14 +42,5 @@
     <module>client</module>
     <module>bundle</module>
   </modules>
-
-  <distributionManagement>
-    <snapshotRepository>
-      <id>maven.mate1</id>
-      <name>Mate1 Internal Snapshot Repository</name>
-      <!--url>http://maven.mate1:8081/nexus/content/groups/public</url-->
-      <url>http://maven.mate1:8081/nexus/content/repositories/snapshots/</url>
-    </snapshotRepository>
-  </distributionManagement>
 
 </project>
