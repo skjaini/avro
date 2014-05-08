@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<assembly>
+  <id>bundle-${project.version}</id>
+  <formats>
+    <format>tar.gz</format>
+  </formats>
+  <fileSets>
+    <fileSet>
+      <directory>target</directory>
+      <includes>
+        <include>*withdeps.jar</include>
+      </includes>
+      <outputDirectory>lib</outputDirectory>
+    </fileSet>
+    <fileSet>
+      <directory>../</directory>
+      <includes>
+        <include>config.properties</include>
+      </includes>
+      <outputDirectory>config</outputDirectory>
+    </fileSet>
+    <fileSet>
+      <directory>./</directory>
+      <includes>
+        <include>avro_schema_repo.sh</include>
+      </includes>
+      <outputDirectory>/</outputDirectory>
+    </fileSet>
+  </fileSets>
+</assembly>
